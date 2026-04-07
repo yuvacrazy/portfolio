@@ -6,7 +6,7 @@ const { Pool } = require("pg");
 
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = process.env.https://dashboard.render.com/blueprint/exs-d7aetvedqaus73crsis0;
 
 const MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
