@@ -22,13 +22,15 @@ const MIME_TYPES = {
 };
 
 if (!DATABASE_URL) {
-    throw new Error("DATABASE_URL is required.");
+    console.warn("DATABASE_URL is not set. Contact form submissions will be unavailable.");
 }
 
-const pool = new Pool({
-    connectionString: DATABASE_URL,
-    ssl: shouldUseSsl(DATABASE_URL) ? { rejectUnauthorized: false } : false
-});
+const pool = DATABASE_URL
+    ? new Pool({
+        connectionString: DATABASE_URL,
+        ssl: shouldUseSsl(DATABASE_URL) ? { rejectUnauthorized: false } : false
+    })
+    : null;
 
 const server = http.createServer(async (req, res) => {
     const host = req.headers.host || `localhost:${PORT}`;
@@ -78,6 +80,10 @@ function handleContact(req, res) {
                 message,
                 receivedAt: new Date().toISOString()
             };
+
+            if (!pool) {
+                throw new Error("Database is not configured.");
+            }
 
             await pool.query(
                 `INSERT INTO contact_submissions (name, email, message, received_at)
@@ -174,7 +180,12 @@ function sendText(res, statusCode, message) {
 
 async function start() {
     try {
+        console.log(`Starting portfolio server on port ${PORT}...`);
+        console.log(`Database configured: ${DATABASE_URL ? "yes" : "no"}`);
+
         await initializeDatabase();
+        console.log("Database initialization complete.");
+
         server.listen(PORT, () => {
             console.log(`Portfolio server running at http://localhost:${PORT}`);
         });
@@ -185,6 +196,10 @@ async function start() {
 }
 
 async function initializeDatabase() {
+    if (!pool) {
+        return;
+    }
+
     await pool.query(`
         CREATE TABLE IF NOT EXISTS contact_submissions (
             id BIGSERIAL PRIMARY KEY,
@@ -199,3 +214,4 @@ async function initializeDatabase() {
 function shouldUseSsl(connectionString) {
     return !/localhost|127\.0\.0\.1/i.test(connectionString);
 }
+
