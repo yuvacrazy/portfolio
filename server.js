@@ -28,16 +28,24 @@ if (!DATABASE_URL) {
 const pool = DATABASE_URL
     ? new Pool({
         connectionString: DATABASE_URL,
-        ssl: shouldUseSsl(DATABASE_URL) ? { rejectUnauthorized: false } : false
+        ssl: shouldUseSsl(DATABASE_URL) ? { rejectUnauthorized: false } : false,
+        connectionTimeoutMillis: 10000
     })
     : null;
+
+let databaseReady = false;
+let databaseError = null;
 
 const server = http.createServer(async (req, res) => {
     const host = req.headers.host || `localhost:${PORT}`;
     const url = new URL(req.url, `http://${host}`);
 
     if (req.method === "GET" && url.pathname === "/healthz") {
-        return sendJson(res, 200, { ok: true, status: "healthy" });
+        return sendJson(res, 200, {
+            ok: true,
+            status: "healthy",
+            database: databaseReady ? "connected" : (DATABASE_URL ? "connecting" : "not-configured")
+        });
     }
 
     if (req.method === "POST" && url.pathname === "/api/contact") {
@@ -83,6 +91,10 @@ function handleContact(req, res) {
 
             if (!pool) {
                 throw new Error("Database is not configured.");
+            }
+
+            if (!databaseReady) {
+                throw new Error(databaseError || "Database is still connecting.");
             }
 
             await pool.query(
@@ -179,20 +191,16 @@ function sendText(res, statusCode, message) {
 }
 
 async function start() {
-    try {
-        console.log(`Starting portfolio server on port ${PORT}...`);
-        console.log(`Database configured: ${DATABASE_URL ? "yes" : "no"}`);
+    console.log(`Starting portfolio server on port ${PORT}...`);
+    console.log(`Database configured: ${DATABASE_URL ? "yes" : "no"}`);
 
-        await initializeDatabase();
-        console.log("Database initialization complete.");
+    server.listen(PORT, () => {
+        console.log(`Portfolio server running at http://localhost:${PORT}`);
+    });
 
-        server.listen(PORT, () => {
-            console.log(`Portfolio server running at http://localhost:${PORT}`);
-        });
-    } catch (error) {
-        console.error("Server startup failed:", error);
-        process.exit(1);
-    }
+    initializeDatabase().catch((error) => {
+        console.error("Database initialization failed:", error);
+    });
 }
 
 async function initializeDatabase() {
@@ -209,9 +217,12 @@ async function initializeDatabase() {
             received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
+
+    databaseReady = true;
+    databaseError = null;
+    console.log("Database initialization complete.");
 }
 
 function shouldUseSsl(connectionString) {
     return !/localhost|127\.0\.0\.1/i.test(connectionString);
 }
-
